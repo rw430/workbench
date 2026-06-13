@@ -16,6 +16,8 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/api/health", "/actuator/health").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/agents").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/agents/recommend").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/intent/analyze").permitAll()
                         .anyRequest().authenticated())
                 .httpBasic(Customizer.withDefaults())

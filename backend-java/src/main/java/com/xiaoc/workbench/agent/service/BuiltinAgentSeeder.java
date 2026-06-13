@@ -4,15 +4,22 @@ import com.xiaoc.workbench.agent.domain.AgentProfile;
 import com.xiaoc.workbench.agent.repository.AgentProfileRepository;
 import java.math.BigDecimal;
 import java.util.List;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class BuiltinAgentSeeder {
+public class BuiltinAgentSeeder implements ApplicationRunner {
     private final AgentProfileRepository repository;
 
     public BuiltinAgentSeeder(AgentProfileRepository repository) {
         this.repository = repository;
+    }
+
+    @Override
+    public void run(ApplicationArguments args) {
+        seedBuiltinAgents();
     }
 
     @Transactional
