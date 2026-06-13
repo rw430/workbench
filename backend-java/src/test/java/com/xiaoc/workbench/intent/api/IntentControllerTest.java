@@ -28,6 +28,7 @@ class IntentControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.mode").value("tasks"))
             .andExpect(jsonPath("$.template_id").value("credit_card_installment_campaign_v1"))
+            .andExpect(jsonPath("$.risk_level").value("medium"))
             .andExpect(jsonPath("$.human_gate_required").value(true))
             .andExpect(jsonPath("$.candidate_roles[0]").value("PD"));
     }
