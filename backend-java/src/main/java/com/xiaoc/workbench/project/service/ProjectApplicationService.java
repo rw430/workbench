@@ -4,14 +4,17 @@ import com.xiaoc.workbench.agent.api.AgentSummary;
 import com.xiaoc.workbench.agent.service.AgentRecommendationService;
 import com.xiaoc.workbench.intent.service.IntentAnalysis;
 import com.xiaoc.workbench.intent.service.IntentAnalysisService;
+import com.xiaoc.workbench.orchestrator.domain.HumanGate;
 import com.xiaoc.workbench.orchestrator.domain.OrchestratorRun;
 import com.xiaoc.workbench.orchestrator.domain.OrchestratorTask;
 import com.xiaoc.workbench.orchestrator.domain.TaskEdge;
+import com.xiaoc.workbench.orchestrator.repository.HumanGateRepository;
 import com.xiaoc.workbench.orchestrator.repository.OrchestratorRunRepository;
 import com.xiaoc.workbench.orchestrator.repository.OrchestratorTaskRepository;
 import com.xiaoc.workbench.orchestrator.repository.TaskEdgeRepository;
 import com.xiaoc.workbench.orchestrator.template.DagTemplate;
 import com.xiaoc.workbench.orchestrator.template.DagTemplateLoader;
+import com.xiaoc.workbench.project.api.HumanGateSummary;
 import com.xiaoc.workbench.project.api.ProjectStateResponse;
 import com.xiaoc.workbench.project.api.ProjectSummary;
 import com.xiaoc.workbench.project.api.RoomSummary;
@@ -44,6 +47,7 @@ public class ProjectApplicationService {
     private final OrchestratorRunRepository runRepository;
     private final OrchestratorTaskRepository taskRepository;
     private final TaskEdgeRepository edgeRepository;
+    private final HumanGateRepository humanGateRepository;
 
     public ProjectApplicationService(
             IntentAnalysisService intentAnalysisService,
@@ -53,7 +57,8 @@ public class ProjectApplicationService {
             RoomRepository roomRepository,
             OrchestratorRunRepository runRepository,
             OrchestratorTaskRepository taskRepository,
-            TaskEdgeRepository edgeRepository
+            TaskEdgeRepository edgeRepository,
+            HumanGateRepository humanGateRepository
     ) {
         this.intentAnalysisService = intentAnalysisService;
         this.agentRecommendationService = agentRecommendationService;
@@ -63,6 +68,7 @@ public class ProjectApplicationService {
         this.runRepository = runRepository;
         this.taskRepository = taskRepository;
         this.edgeRepository = edgeRepository;
+        this.humanGateRepository = humanGateRepository;
     }
 
     @Transactional
@@ -93,6 +99,18 @@ public class ProjectApplicationService {
                 .orElseThrow(() -> new NoSuchElementException("Room not found for project: " + projectId));
         OrchestratorRun run = runRepository.findByProjectId(projectId)
                 .orElseThrow(() -> new NoSuchElementException("Run not found for project: " + projectId));
+        IntentAnalysis intent = intentAnalysisService.analyze(project.getGoal());
+        return assembleState(project, room, run, agentRecommendationService.recommend(intent));
+    }
+
+    @Transactional(readOnly = true)
+    public ProjectStateResponse getRunState(String runId) {
+        OrchestratorRun run = runRepository.findById(runId)
+                .orElseThrow(() -> new NoSuchElementException("Run not found: " + runId));
+        Project project = projectRepository.findById(run.getProjectId())
+                .orElseThrow(() -> new NoSuchElementException("Project not found: " + run.getProjectId()));
+        Room room = roomRepository.findByProjectId(project.getId())
+                .orElseThrow(() -> new NoSuchElementException("Room not found for project: " + project.getId()));
         IntentAnalysis intent = intentAnalysisService.analyze(project.getGoal());
         return assembleState(project, room, run, agentRecommendationService.recommend(intent));
     }
@@ -137,6 +155,9 @@ public class ProjectApplicationService {
                 .collect(Collectors.groupingBy(
                         TaskEdge::getTargetNodeId,
                         Collectors.mapping(TaskEdge::getSourceNodeId, Collectors.toList())));
+        HumanGateSummary humanGate = humanGateRepository.findFirstByRunIdOrderByCreatedAtDesc(run.getId())
+                .map(this::toHumanGateSummary)
+                .orElse(null);
 
         return new ProjectStateResponse(
                 new ProjectSummary(project.getId(), project.getGoal(), lower(project.getMode()), lower(project.getStatus())),
@@ -146,7 +167,7 @@ public class ProjectApplicationService {
                 tasks.stream()
                         .map(task -> toTaskSummary(task, dependenciesByTarget.getOrDefault(task.getNodeId(), List.of())))
                         .toList(),
-                null,
+                humanGate,
                 null,
                 null);
     }
@@ -163,6 +184,15 @@ public class ProjectApplicationService {
                 lower(task.getStatus()),
                 task.getOutput(),
                 task.getLog());
+    }
+
+    private HumanGateSummary toHumanGateSummary(HumanGate gate) {
+        return new HumanGateSummary(
+                gate.getId(),
+                gate.getRunId(),
+                gate.getTaskId(),
+                lower(gate.getStatus()),
+                gate.getPrompt());
     }
 
     private String lower(String value) {

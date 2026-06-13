@@ -105,6 +105,52 @@ class OrchestratorRepositoryTest extends PostgresIntegrationTest {
     }
 
     @Test
+    void updatesRunTaskAndHumanGateStatuses() {
+        Project project = projectRepository.save(
+            new Project("project-phase3-state", "state transition check", "TASKS", "CREATED")
+        );
+        OrchestratorRun run = runRepository.save(
+            new OrchestratorRun("run-phase3-state", project.getId(), "credit_card_installment_campaign_v1", "CREATED")
+        );
+        OrchestratorTask task = taskRepository.save(
+            new OrchestratorTask(
+                "task-phase3-state",
+                run.getId(),
+                "human_gate_prd",
+                "PRD scope confirmation",
+                "HUMAN_GATE",
+                "USER",
+                "READY",
+                "",
+                "",
+                1
+            )
+        );
+        HumanGate gate = humanGateRepository.save(
+            new HumanGate("gate-phase3-state", run.getId(), task.getId(), "WAITING", "Confirm PRD scope.")
+        );
+
+        project.markRunning();
+        run.markRunning();
+        task.markWaitingHuman("waiting for PRD confirmation");
+        gate.approve("scope confirmed", "local-user");
+        task.complete("approved by local-user", "human gate approved");
+        project.markCompleted();
+        run.markCompleted();
+
+        assertThat(projectRepository.saveAndFlush(project).getStatus()).isEqualTo("COMPLETED");
+        assertThat(runRepository.saveAndFlush(run).getStatus()).isEqualTo("COMPLETED");
+        assertThat(taskRepository.saveAndFlush(task).getStatus()).isEqualTo("COMPLETED");
+        HumanGate loadedGate = humanGateRepository.saveAndFlush(gate);
+        assertThat(loadedGate.getStatus()).isEqualTo("APPROVED");
+        assertThat(loadedGate.getDecisionReason()).isEqualTo("scope confirmed");
+        assertThat(loadedGate.getDecidedBy()).isEqualTo("local-user");
+        assertThat(loadedGate.getDecidedAt()).isNotNull();
+        assertThat(taskRepository.findByRunIdAndNodeId(run.getId(), "human_gate_prd")).contains(task);
+        assertThat(humanGateRepository.findByTaskId(task.getId())).contains(loadedGate);
+    }
+
+    @Test
     void rejectsEdgeWhenEndpointNodeDoesNotExistInRun() {
         Project project = projectRepository.save(
             new Project("project-edge-integrity", "验证 DAG 边端点", "TASKS", "RUNNING")

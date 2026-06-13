@@ -6,6 +6,8 @@ import com.xiaoc.workbench.agent.api.AgentSummary;
 import com.xiaoc.workbench.agent.service.AgentRecommendationService;
 import com.xiaoc.workbench.agent.service.BuiltinAgentSeeder;
 import com.xiaoc.workbench.intent.service.IntentAnalysisService;
+import com.xiaoc.workbench.orchestrator.domain.HumanGate;
+import com.xiaoc.workbench.orchestrator.repository.HumanGateRepository;
 import com.xiaoc.workbench.orchestrator.template.DagTemplateLoader;
 import com.xiaoc.workbench.project.api.ProjectStateResponse;
 import com.xiaoc.workbench.project.api.TaskSummary;
@@ -27,6 +29,9 @@ public class ProjectApplicationServiceTest extends PostgresIntegrationTest {
 
     @Autowired
     private ProjectApplicationService service;
+
+    @Autowired
+    private HumanGateRepository humanGateRepository;
 
     @Test
     void createsProjectStateFromGoldenPathTemplate() {
@@ -60,5 +65,27 @@ public class ProjectApplicationServiceTest extends PostgresIntegrationTest {
         assertThat(loaded.project().id()).isEqualTo(created.project().id());
         assertThat(loaded.tasks()).extracting(TaskSummary::nodeId)
                 .containsExactlyElementsOf(created.tasks().stream().map(TaskSummary::nodeId).toList());
+    }
+    @Test
+    void returnsWaitingHumanGateInProjectState() {
+        seeder.seedBuiltinAgents();
+        ProjectStateResponse created = service.createProject("credit card installment campaign approval workflow");
+        TaskSummary gateTask = created.tasks().stream()
+                .filter(task -> task.kind().equals("human_gate"))
+                .findFirst()
+                .orElseThrow();
+        humanGateRepository.save(new HumanGate(
+                "gate-project-state",
+                created.run().id(),
+                gateTask.id(),
+                "WAITING",
+                "Confirm PRD scope before risk review."));
+
+        ProjectStateResponse loaded = service.getProject(created.project().id());
+
+        assertThat(loaded.humanGate()).isNotNull();
+        assertThat(loaded.humanGate().id()).isEqualTo("gate-project-state");
+        assertThat(loaded.humanGate().status()).isEqualTo("waiting");
+        assertThat(loaded.humanGate().prompt()).contains("Confirm PRD scope");
     }
 }

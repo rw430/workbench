@@ -99,4 +99,28 @@ public class OrchestratorTask {
     public int getSortOrder() { return sortOrder; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+
+    public void markReady() {
+        this.status = "READY";
+    }
+
+    public void markRunning() {
+        this.status = "RUNNING";
+    }
+
+    public void markWaitingHuman(String log) {
+        this.status = "WAITING_HUMAN";
+        this.log = log;
+    }
+
+    public void complete(String output, String log) {
+        this.status = "COMPLETED";
+        this.output = output;
+        this.log = log;
+    }
+
+    public void fail(String log) {
+        this.status = "FAILED";
+        this.log = log;
+    }
 }

@@ -58,4 +58,20 @@ public class Project {
     public String getStatus() { return status; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+
+    public void markRunning() {
+        this.status = "RUNNING";
+    }
+
+    public void markWaitingHuman() {
+        this.status = "WAITING_HUMAN";
+    }
+
+    public void markCompleted() {
+        this.status = "COMPLETED";
+    }
+
+    public void markFailed() {
+        this.status = "FAILED";
+    }
 }

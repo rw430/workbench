@@ -29,6 +29,13 @@ public class ApiExceptionHandler {
                 .body(Map.of("error", "not_found", "message", exception.getMessage()));
     }
 
+    @ExceptionHandler(InvalidStateException.class)
+    ResponseEntity<Map<String, String>> handleInvalidState(InvalidStateException exception) {
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(Map.of("error", "invalid_state", "message", exception.getMessage()));
+    }
+
     private String fieldErrorMessage(FieldError error) {
         return error.getField() + " " + error.getDefaultMessage();
     }

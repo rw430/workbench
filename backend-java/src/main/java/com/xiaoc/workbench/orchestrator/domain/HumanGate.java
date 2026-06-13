@@ -62,4 +62,18 @@ public class HumanGate {
     public String getDecidedBy() { return decidedBy; }
     public Instant getDecidedAt() { return decidedAt; }
     public Instant getCreatedAt() { return createdAt; }
+
+    public void approve(String reason, String decidedBy) {
+        this.status = "APPROVED";
+        this.decisionReason = reason;
+        this.decidedBy = decidedBy;
+        this.decidedAt = Instant.now();
+    }
+
+    public void reject(String reason, String decidedBy) {
+        this.status = "REJECTED";
+        this.decisionReason = reason;
+        this.decidedBy = decidedBy;
+        this.decidedAt = Instant.now();
+    }
 }

@@ -21,6 +21,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/intent/analyze").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/projects").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/projects/*").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/runs/*/start").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/human-gates/*/approve").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/human-gates/*/reject").permitAll()
                         .anyRequest().authenticated())
                 .httpBasic(Customizer.withDefaults())
                 .build();
