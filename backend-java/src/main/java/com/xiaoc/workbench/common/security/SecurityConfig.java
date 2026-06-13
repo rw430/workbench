@@ -19,6 +19,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/agents").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/agents/recommend").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/intent/analyze").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/projects").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/projects/*").permitAll()
                         .anyRequest().authenticated())
                 .httpBasic(Customizer.withDefaults())
                 .build();
