@@ -113,6 +113,7 @@ class ProjectControllerTest {
                                 "")),
                 null,
                 null,
-                null);
+                null,
+                List.of());
     }
 }

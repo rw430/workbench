@@ -61,6 +61,7 @@ public class ProjectApplicationServiceTest extends PostgresIntegrationTest {
         assertThat(state.humanGate()).isNull();
         assertThat(state.artifact()).isNull();
         assertThat(state.reflection()).isNull();
+        assertThat(state.lessons()).isEmpty();
     }
 
     @Test

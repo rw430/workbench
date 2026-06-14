@@ -3,6 +3,7 @@ package com.xiaoc.workbench.orchestrator.service;
 import com.xiaoc.workbench.common.web.InvalidStateException;
 import com.xiaoc.workbench.event.service.RuntimeEventService;
 import com.xiaoc.workbench.governance.service.AuditLogService;
+import com.xiaoc.workbench.growth.service.DeliveryGenerationService;
 import com.xiaoc.workbench.orchestrator.domain.HumanGate;
 import com.xiaoc.workbench.orchestrator.domain.OrchestratorRun;
 import com.xiaoc.workbench.orchestrator.domain.OrchestratorTask;
@@ -36,6 +37,7 @@ public class RunnerService {
     private final DeterministicTaskExecutor taskExecutor;
     private final RuntimeEventService runtimeEventService;
     private final AuditLogService auditLogService;
+    private final DeliveryGenerationService deliveryGenerationService;
 
     public RunnerService(
             ProjectRepository projectRepository,
@@ -46,7 +48,8 @@ public class RunnerService {
             ProjectApplicationService projectApplicationService,
             DeterministicTaskExecutor taskExecutor,
             RuntimeEventService runtimeEventService,
-            AuditLogService auditLogService
+            AuditLogService auditLogService,
+            DeliveryGenerationService deliveryGenerationService
     ) {
         this.projectRepository = projectRepository;
         this.runRepository = runRepository;
@@ -57,6 +60,7 @@ public class RunnerService {
         this.taskExecutor = taskExecutor;
         this.runtimeEventService = runtimeEventService;
         this.auditLogService = auditLogService;
+        this.deliveryGenerationService = deliveryGenerationService;
     }
 
     @Transactional
@@ -177,6 +181,7 @@ public class RunnerService {
                 if (tasks.stream().allMatch(task -> "COMPLETED".equals(task.getStatus()))) {
                     project.markCompleted();
                     run.markCompleted();
+                    deliveryGenerationService.generateIfMissing(project, run);
                     runtimeEventService.append(run.getId(), "run.completed", Map.of(
                             "project_id", project.getId(),
                             "run_id", run.getId(),

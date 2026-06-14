@@ -79,6 +79,7 @@ class HumanGateControllerTest {
                 List.of(),
                 new HumanGateSummary("gate-1", "run-1", "task-2", gateStatus, "Confirm scope."),
                 null,
-                null);
+                null,
+                List.of());
     }
 }

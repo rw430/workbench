@@ -9,6 +9,7 @@ import com.xiaoc.workbench.agent.service.AgentRecommendationService;
 import com.xiaoc.workbench.agent.service.BuiltinAgentSeeder;
 import com.xiaoc.workbench.event.service.RuntimeEventService;
 import com.xiaoc.workbench.governance.service.AuditLogService;
+import com.xiaoc.workbench.growth.service.DeliveryGenerationService;
 import com.xiaoc.workbench.intent.service.IntentAnalysisService;
 import com.xiaoc.workbench.orchestrator.template.DagTemplateLoader;
 import com.xiaoc.workbench.project.api.ProjectStateResponse;
@@ -28,6 +29,7 @@ import org.springframework.context.annotation.Import;
         DagTemplateLoader.class,
         RuntimeEventService.class,
         AuditLogService.class,
+        DeliveryGenerationService.class,
         ProjectApplicationService.class,
         DeterministicTaskExecutor.class,
         RunnerService.class,

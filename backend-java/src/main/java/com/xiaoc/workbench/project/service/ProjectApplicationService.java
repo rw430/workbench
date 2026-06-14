@@ -4,12 +4,18 @@ import com.xiaoc.workbench.agent.api.AgentSummary;
 import com.xiaoc.workbench.agent.service.AgentRecommendationService;
 import com.xiaoc.workbench.event.service.RuntimeEventService;
 import com.xiaoc.workbench.governance.service.AuditLogService;
+import com.xiaoc.workbench.growth.domain.Lesson;
+import com.xiaoc.workbench.growth.domain.Reflection;
+import com.xiaoc.workbench.growth.repository.LessonRepository;
+import com.xiaoc.workbench.growth.repository.ReflectionRepository;
 import com.xiaoc.workbench.intent.service.IntentAnalysis;
 import com.xiaoc.workbench.intent.service.IntentAnalysisService;
+import com.xiaoc.workbench.orchestrator.domain.Artifact;
 import com.xiaoc.workbench.orchestrator.domain.HumanGate;
 import com.xiaoc.workbench.orchestrator.domain.OrchestratorRun;
 import com.xiaoc.workbench.orchestrator.domain.OrchestratorTask;
 import com.xiaoc.workbench.orchestrator.domain.TaskEdge;
+import com.xiaoc.workbench.orchestrator.repository.ArtifactRepository;
 import com.xiaoc.workbench.orchestrator.repository.HumanGateRepository;
 import com.xiaoc.workbench.orchestrator.repository.OrchestratorRunRepository;
 import com.xiaoc.workbench.orchestrator.repository.OrchestratorTaskRepository;
@@ -17,6 +23,7 @@ import com.xiaoc.workbench.orchestrator.repository.TaskEdgeRepository;
 import com.xiaoc.workbench.orchestrator.template.DagTemplate;
 import com.xiaoc.workbench.orchestrator.template.DagTemplateLoader;
 import com.xiaoc.workbench.project.api.HumanGateSummary;
+import com.xiaoc.workbench.project.api.LessonSummary;
 import com.xiaoc.workbench.project.api.ProjectStateResponse;
 import com.xiaoc.workbench.project.api.ProjectSummary;
 import com.xiaoc.workbench.project.api.RoomSummary;
@@ -52,6 +59,9 @@ public class ProjectApplicationService {
     private final HumanGateRepository humanGateRepository;
     private final RuntimeEventService runtimeEventService;
     private final AuditLogService auditLogService;
+    private final ArtifactRepository artifactRepository;
+    private final ReflectionRepository reflectionRepository;
+    private final LessonRepository lessonRepository;
 
     public ProjectApplicationService(
             IntentAnalysisService intentAnalysisService,
@@ -64,7 +74,10 @@ public class ProjectApplicationService {
             TaskEdgeRepository edgeRepository,
             HumanGateRepository humanGateRepository,
             RuntimeEventService runtimeEventService,
-            AuditLogService auditLogService
+            AuditLogService auditLogService,
+            ArtifactRepository artifactRepository,
+            ReflectionRepository reflectionRepository,
+            LessonRepository lessonRepository
     ) {
         this.intentAnalysisService = intentAnalysisService;
         this.agentRecommendationService = agentRecommendationService;
@@ -77,6 +90,9 @@ public class ProjectApplicationService {
         this.humanGateRepository = humanGateRepository;
         this.runtimeEventService = runtimeEventService;
         this.auditLogService = auditLogService;
+        this.artifactRepository = artifactRepository;
+        this.reflectionRepository = reflectionRepository;
+        this.lessonRepository = lessonRepository;
     }
 
     @Transactional
@@ -174,6 +190,18 @@ public class ProjectApplicationService {
         HumanGateSummary humanGate = humanGateRepository.findFirstByRunIdOrderByCreatedAtDesc(run.getId())
                 .map(this::toHumanGateSummary)
                 .orElse(null);
+        String artifact = artifactRepository.findByRunId(run.getId())
+                .map(Artifact::getContent)
+                .orElse(null);
+        String reflection = reflectionRepository.findByRunId(run.getId())
+                .map(Reflection::getContent)
+                .orElse(null);
+        List<LessonSummary> lessons = reflectionRepository.findByRunId(run.getId())
+                .map(found -> lessonRepository.findAllByReflectionId(found.getId()).stream()
+                        .sorted(Comparator.comparing(Lesson::getCreatedAt).thenComparing(Lesson::getId))
+                        .map(this::toLessonSummary)
+                        .toList())
+                .orElse(List.of());
 
         return new ProjectStateResponse(
                 new ProjectSummary(project.getId(), project.getGoal(), lower(project.getMode()), lower(project.getStatus())),
@@ -184,8 +212,9 @@ public class ProjectApplicationService {
                         .map(task -> toTaskSummary(task, dependenciesByTarget.getOrDefault(task.getNodeId(), List.of())))
                         .toList(),
                 humanGate,
-                null,
-                null);
+                artifact,
+                reflection,
+                lessons);
     }
 
     private TaskSummary toTaskSummary(OrchestratorTask task, List<String> dependsOn) {
@@ -209,6 +238,16 @@ public class ProjectApplicationService {
                 gate.getTaskId(),
                 lower(gate.getStatus()),
                 gate.getPrompt());
+    }
+
+    private LessonSummary toLessonSummary(Lesson lesson) {
+        return new LessonSummary(
+                lesson.getId(),
+                lesson.getReflectionId(),
+                lesson.getCategory(),
+                lesson.getContent(),
+                lesson.getConfidence(),
+                lesson.getCreatedAt());
     }
 
     private String lower(String value) {

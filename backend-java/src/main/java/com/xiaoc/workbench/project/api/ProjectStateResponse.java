@@ -12,6 +12,7 @@ public record ProjectStateResponse(
         List<TaskSummary> tasks,
         @JsonProperty("human_gate") HumanGateSummary humanGate,
         String artifact,
-        String reflection
+        String reflection,
+        List<LessonSummary> lessons
 ) {
 }
