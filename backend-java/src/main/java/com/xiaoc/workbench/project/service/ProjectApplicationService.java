@@ -2,6 +2,8 @@ package com.xiaoc.workbench.project.service;
 
 import com.xiaoc.workbench.agent.api.AgentSummary;
 import com.xiaoc.workbench.agent.service.AgentRecommendationService;
+import com.xiaoc.workbench.event.service.RuntimeEventService;
+import com.xiaoc.workbench.governance.service.AuditLogService;
 import com.xiaoc.workbench.intent.service.IntentAnalysis;
 import com.xiaoc.workbench.intent.service.IntentAnalysisService;
 import com.xiaoc.workbench.orchestrator.domain.HumanGate;
@@ -48,6 +50,8 @@ public class ProjectApplicationService {
     private final OrchestratorTaskRepository taskRepository;
     private final TaskEdgeRepository edgeRepository;
     private final HumanGateRepository humanGateRepository;
+    private final RuntimeEventService runtimeEventService;
+    private final AuditLogService auditLogService;
 
     public ProjectApplicationService(
             IntentAnalysisService intentAnalysisService,
@@ -58,7 +62,9 @@ public class ProjectApplicationService {
             OrchestratorRunRepository runRepository,
             OrchestratorTaskRepository taskRepository,
             TaskEdgeRepository edgeRepository,
-            HumanGateRepository humanGateRepository
+            HumanGateRepository humanGateRepository,
+            RuntimeEventService runtimeEventService,
+            AuditLogService auditLogService
     ) {
         this.intentAnalysisService = intentAnalysisService;
         this.agentRecommendationService = agentRecommendationService;
@@ -69,6 +75,8 @@ public class ProjectApplicationService {
         this.taskRepository = taskRepository;
         this.edgeRepository = edgeRepository;
         this.humanGateRepository = humanGateRepository;
+        this.runtimeEventService = runtimeEventService;
+        this.auditLogService = auditLogService;
     }
 
     @Transactional
@@ -87,6 +95,14 @@ public class ProjectApplicationService {
 
         saveTasks(run, template);
         saveEdges(run, template);
+        runtimeEventService.append(run.getId(), "project.created", Map.of(
+                "project_id", project.getId(),
+                "run_id", run.getId(),
+                "template_id", template.id(),
+                "status", "created"));
+        auditLogService.record("local-user", "PROJECT_CREATE", "project", project.getId(), Map.of(
+                "run_id", run.getId(),
+                "template_id", template.id()));
 
         return assembleState(project, room, run, agentRecommendationService.recommend(intent));
     }

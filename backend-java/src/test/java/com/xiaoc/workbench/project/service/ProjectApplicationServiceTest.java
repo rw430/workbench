@@ -2,9 +2,12 @@ package com.xiaoc.workbench.project.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiaoc.workbench.agent.api.AgentSummary;
 import com.xiaoc.workbench.agent.service.AgentRecommendationService;
 import com.xiaoc.workbench.agent.service.BuiltinAgentSeeder;
+import com.xiaoc.workbench.event.service.RuntimeEventService;
+import com.xiaoc.workbench.governance.service.AuditLogService;
 import com.xiaoc.workbench.intent.service.IntentAnalysisService;
 import com.xiaoc.workbench.orchestrator.domain.HumanGate;
 import com.xiaoc.workbench.orchestrator.repository.HumanGateRepository;
@@ -14,6 +17,8 @@ import com.xiaoc.workbench.project.api.TaskSummary;
 import com.xiaoc.workbench.support.PostgresIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 
 @Import({
@@ -21,7 +26,10 @@ import org.springframework.context.annotation.Import;
         IntentAnalysisService.class,
         AgentRecommendationService.class,
         DagTemplateLoader.class,
-        ProjectApplicationService.class
+        RuntimeEventService.class,
+        AuditLogService.class,
+        ProjectApplicationService.class,
+        ProjectApplicationServiceTest.JacksonTestConfig.class
 })
 public class ProjectApplicationServiceTest extends PostgresIntegrationTest {
     @Autowired
@@ -87,5 +95,13 @@ public class ProjectApplicationServiceTest extends PostgresIntegrationTest {
         assertThat(loaded.humanGate().id()).isEqualTo("gate-project-state");
         assertThat(loaded.humanGate().status()).isEqualTo("waiting");
         assertThat(loaded.humanGate().prompt()).contains("Confirm PRD scope");
+    }
+
+    @TestConfiguration
+    static class JacksonTestConfig {
+        @Bean
+        ObjectMapper objectMapper() {
+            return new ObjectMapper();
+        }
     }
 }

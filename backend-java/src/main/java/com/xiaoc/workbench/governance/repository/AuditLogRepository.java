@@ -6,4 +6,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface AuditLogRepository extends JpaRepository<AuditLog, String> {
     List<AuditLog> findAllByActorIdOrderByCreatedAtDescIdDesc(String actorId);
+
+    List<AuditLog> findAllByTargetTypeAndTargetIdOrderByCreatedAtDescIdDesc(String targetType, String targetId);
 }

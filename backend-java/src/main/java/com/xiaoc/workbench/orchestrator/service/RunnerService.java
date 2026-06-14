@@ -1,6 +1,8 @@
 package com.xiaoc.workbench.orchestrator.service;
 
 import com.xiaoc.workbench.common.web.InvalidStateException;
+import com.xiaoc.workbench.event.service.RuntimeEventService;
+import com.xiaoc.workbench.governance.service.AuditLogService;
 import com.xiaoc.workbench.orchestrator.domain.HumanGate;
 import com.xiaoc.workbench.orchestrator.domain.OrchestratorRun;
 import com.xiaoc.workbench.orchestrator.domain.OrchestratorTask;
@@ -32,6 +34,8 @@ public class RunnerService {
     private final HumanGateRepository humanGateRepository;
     private final ProjectApplicationService projectApplicationService;
     private final DeterministicTaskExecutor taskExecutor;
+    private final RuntimeEventService runtimeEventService;
+    private final AuditLogService auditLogService;
 
     public RunnerService(
             ProjectRepository projectRepository,
@@ -40,7 +44,9 @@ public class RunnerService {
             TaskEdgeRepository edgeRepository,
             HumanGateRepository humanGateRepository,
             ProjectApplicationService projectApplicationService,
-            DeterministicTaskExecutor taskExecutor
+            DeterministicTaskExecutor taskExecutor,
+            RuntimeEventService runtimeEventService,
+            AuditLogService auditLogService
     ) {
         this.projectRepository = projectRepository;
         this.runRepository = runRepository;
@@ -49,6 +55,8 @@ public class RunnerService {
         this.humanGateRepository = humanGateRepository;
         this.projectApplicationService = projectApplicationService;
         this.taskExecutor = taskExecutor;
+        this.runtimeEventService = runtimeEventService;
+        this.auditLogService = auditLogService;
     }
 
     @Transactional
@@ -61,6 +69,13 @@ public class RunnerService {
         Project project = loadProject(run.getProjectId());
         project.markRunning();
         run.markRunning();
+        runtimeEventService.append(run.getId(), "run.started", Map.of(
+                "project_id", project.getId(),
+                "run_id", run.getId(),
+                "status", "running"));
+        auditLogService.record("local-user", "RUN_START", "run", run.getId(), Map.of(
+                "project_id", project.getId(),
+                "template_id", run.getTemplateId()));
         advance(project, run);
         return projectApplicationService.getRunState(run.getId());
     }
@@ -80,9 +95,25 @@ public class RunnerService {
         OrchestratorTask task = taskRepository.findById(gate.getTaskId())
                 .orElseThrow(() -> new NoSuchElementException("Task not found: " + gate.getTaskId()));
 
-        gate.approve(normalizeReason(reason), normalizeDecidedBy(decidedBy));
-        task.complete("approved by " + normalizeDecidedBy(decidedBy) + ": " + normalizeReason(reason),
+        String normalizedReason = normalizeReason(reason);
+        String actor = normalizeDecidedBy(decidedBy);
+        gate.approve(normalizedReason, actor);
+        task.complete("approved by " + actor + ": " + normalizedReason,
                 "human gate approved");
+        runtimeEventService.append(run.getId(), "human_gate.approved", Map.of(
+                "gate_id", gate.getId(),
+                "task_id", task.getId(),
+                "reason", normalizedReason,
+                "decided_by", actor));
+        runtimeEventService.append(run.getId(), "task.completed", Map.of(
+                "task_id", task.getId(),
+                "node_id", task.getNodeId(),
+                "kind", task.getKind(),
+                "status", "completed"));
+        auditLogService.record(actor, "HUMAN_GATE_APPROVE", "human_gate", gate.getId(), Map.of(
+                "run_id", run.getId(),
+                "task_id", task.getId(),
+                "reason", normalizedReason));
         project.markRunning();
         run.markRunning();
         advance(project, run);
@@ -101,10 +132,28 @@ public class RunnerService {
                 .orElseThrow(() -> new NoSuchElementException("Task not found: " + gate.getTaskId()));
 
         if (!"REJECTED".equals(gate.getStatus())) {
-            gate.reject(normalizeReason(reason), normalizeDecidedBy(decidedBy));
-            task.fail("human gate rejected: " + normalizeReason(reason));
+            String normalizedReason = normalizeReason(reason);
+            String actor = normalizeDecidedBy(decidedBy);
+            gate.reject(normalizedReason, actor);
+            task.fail("human gate rejected: " + normalizedReason);
             project.markFailed();
             run.markFailed();
+            runtimeEventService.append(run.getId(), "human_gate.rejected", Map.of(
+                    "gate_id", gate.getId(),
+                    "task_id", task.getId(),
+                    "reason", normalizedReason,
+                    "decided_by", actor));
+            runtimeEventService.append(run.getId(), "run.failed", Map.of(
+                    "project_id", project.getId(),
+                    "run_id", run.getId(),
+                    "reason", normalizedReason));
+            auditLogService.record(actor, "HUMAN_GATE_REJECT", "human_gate", gate.getId(), Map.of(
+                    "run_id", run.getId(),
+                    "task_id", task.getId(),
+                    "reason", normalizedReason));
+            auditLogService.record(actor, "RUN_FAILED", "run", run.getId(), Map.of(
+                    "project_id", project.getId(),
+                    "reason", normalizedReason));
         }
 
         return projectApplicationService.getRunState(run.getId());
@@ -128,6 +177,12 @@ public class RunnerService {
                 if (tasks.stream().allMatch(task -> "COMPLETED".equals(task.getStatus()))) {
                     project.markCompleted();
                     run.markCompleted();
+                    runtimeEventService.append(run.getId(), "run.completed", Map.of(
+                            "project_id", project.getId(),
+                            "run_id", run.getId(),
+                            "status", "completed"));
+                    auditLogService.record("local-user", "RUN_COMPLETED", "run", run.getId(), Map.of(
+                            "project_id", project.getId()));
                 }
                 return;
             }
@@ -136,18 +191,28 @@ public class RunnerService {
                 ready.markWaitingHuman("waiting for human approval");
                 project.markWaitingHuman();
                 run.markWaitingHuman();
-                humanGateRepository.findByTaskId(ready.getId())
+                HumanGate gate = humanGateRepository.findByTaskId(ready.getId())
                         .orElseGet(() -> humanGateRepository.save(new HumanGate(
                                 id("gate"),
                                 run.getId(),
                                 ready.getId(),
                                 "WAITING",
                                 "Confirm " + ready.getName() + " before continuing.")));
+                runtimeEventService.append(run.getId(), "human_gate.waiting", Map.of(
+                        "gate_id", gate.getId(),
+                        "task_id", ready.getId(),
+                        "node_id", ready.getNodeId(),
+                        "status", "waiting"));
                 return;
             }
 
             ready.markRunning();
             ready.complete(taskExecutor.execute(ready), "executed by deterministic local runner");
+            runtimeEventService.append(run.getId(), "task.completed", Map.of(
+                    "task_id", ready.getId(),
+                    "node_id", ready.getNodeId(),
+                    "kind", ready.getKind(),
+                    "status", "completed"));
         }
     }
 

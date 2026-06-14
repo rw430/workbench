@@ -3,9 +3,12 @@ package com.xiaoc.workbench.orchestrator.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xiaoc.workbench.common.web.InvalidStateException;
 import com.xiaoc.workbench.agent.service.AgentRecommendationService;
 import com.xiaoc.workbench.agent.service.BuiltinAgentSeeder;
+import com.xiaoc.workbench.event.service.RuntimeEventService;
+import com.xiaoc.workbench.governance.service.AuditLogService;
 import com.xiaoc.workbench.intent.service.IntentAnalysisService;
 import com.xiaoc.workbench.orchestrator.template.DagTemplateLoader;
 import com.xiaoc.workbench.project.api.ProjectStateResponse;
@@ -14,6 +17,8 @@ import com.xiaoc.workbench.project.service.ProjectApplicationService;
 import com.xiaoc.workbench.support.PostgresIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 
 @Import({
@@ -21,9 +26,12 @@ import org.springframework.context.annotation.Import;
         IntentAnalysisService.class,
         AgentRecommendationService.class,
         DagTemplateLoader.class,
+        RuntimeEventService.class,
+        AuditLogService.class,
         ProjectApplicationService.class,
         DeterministicTaskExecutor.class,
-        RunnerService.class
+        RunnerService.class,
+        RunnerServiceTest.JacksonTestConfig.class
 })
 class RunnerServiceTest extends PostgresIntegrationTest {
     @Autowired
@@ -145,5 +153,13 @@ class RunnerServiceTest extends PostgresIntegrationTest {
                 "local-user"))
                 .isInstanceOf(InvalidStateException.class)
                 .hasMessageContaining("already approved");
+    }
+
+    @TestConfiguration
+    static class JacksonTestConfig {
+        @Bean
+        ObjectMapper objectMapper() {
+            return new ObjectMapper();
+        }
     }
 }
