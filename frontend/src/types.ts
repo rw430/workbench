@@ -1,33 +1,45 @@
+export type IntentAnalysis = {
+  mode: string;
+  template_id: string;
+  domain: string;
+  risk_level: string;
+  human_gate_required: boolean;
+  confidence: number;
+  candidate_roles: string[];
+};
+
 export type AgentSummary = {
   id: string;
   name: string;
   role: string;
   skills: string[];
+  score: number;
+  recommendation_reason: string;
 };
 
 export type ProjectSummary = {
-  id: number;
+  id: string;
   goal: string;
   mode: string;
   status: string;
 };
 
 export type RoomSummary = {
-  id: number;
-  project_id: number;
+  id: string;
+  project_id: string;
   name: string;
 };
 
 export type RunSummary = {
-  id: number;
-  project_id: number;
+  id: string;
+  project_id: string;
   template_id: string;
   status: string;
 };
 
 export type TaskSummary = {
-  id: number;
-  run_id: number;
+  id: string;
+  run_id: string;
   node_id: string;
   name: string;
   kind: string;
@@ -39,11 +51,20 @@ export type TaskSummary = {
 };
 
 export type HumanGateSummary = {
-  id: number;
-  run_id: number;
-  task_id: number;
+  id: string;
+  run_id: string;
+  task_id: string;
   status: string;
   prompt: string;
+};
+
+export type LessonSummary = {
+  id: string;
+  reflection_id: string;
+  category: string;
+  content: string;
+  confidence: string;
+  created_at: string;
 };
 
 export type ProjectState = {
@@ -55,10 +76,32 @@ export type ProjectState = {
   human_gate: HumanGateSummary | null;
   artifact: string | null;
   reflection: string | null;
+  lessons: LessonSummary[];
 };
 
-export type RuntimeEventSummary = {
+export type RuntimeEventEnvelope = {
   id: string;
-  type: string;
-  data: string;
+  run_id: string;
+  event_type: string;
+  payload: Record<string, unknown>;
+  created_at: string;
 };
+
+export type EventTimelineItem = {
+  id: string;
+  event_type: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
+export type AuditLogSummary = {
+  id: string;
+  actor_id: string;
+  action: string;
+  target_type: string;
+  target_id: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
+export type HumanGateDecision = "approve" | "reject";
