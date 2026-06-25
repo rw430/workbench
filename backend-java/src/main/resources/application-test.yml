@@ -6,6 +6,13 @@ spring:
   flyway:
     enabled: true
 
+xiaoc:
+  queue:
+    mode: local
+  redis:
+    enabled: false
+    fail-open: true
+
 logging:
   level:
     org.hibernate.SQL: warn

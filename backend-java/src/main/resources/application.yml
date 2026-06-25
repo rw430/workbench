@@ -8,6 +8,17 @@ spring:
     url: ${XIAOC_DB_URL:jdbc:postgresql://localhost:5432/xiaoc_workbench}
     username: ${XIAOC_DB_USER:xiaoc}
     password: ${XIAOC_DB_PASSWORD:xiaoc}
+  data:
+    redis:
+      host: ${XIAOC_REDIS_HOST:localhost}
+      port: ${XIAOC_REDIS_PORT:6379}
+      repositories:
+        enabled: false
+  rabbitmq:
+    host: ${XIAOC_RABBITMQ_HOST:localhost}
+    port: ${XIAOC_RABBITMQ_PORT:5672}
+    username: ${XIAOC_RABBITMQ_USER:xiaoc}
+    password: ${XIAOC_RABBITMQ_PASSWORD:xiaoc}
   flyway:
     enabled: true
   jpa:
@@ -18,6 +29,24 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+
+xiaoc:
+  queue:
+    mode: ${XIAOC_QUEUE_MODE:local}
+  redis:
+    enabled: ${XIAOC_REDIS_ENABLED:true}
+    fail-open: ${XIAOC_REDIS_FAIL_OPEN:false}
+  run-lock:
+    ttl-seconds: ${XIAOC_RUN_LOCK_TTL_SECONDS:30}
+  rate-limit:
+    run-start:
+      max-requests: ${XIAOC_RUN_START_RATE_LIMIT_MAX_REQUESTS:20}
+      window-seconds: ${XIAOC_RUN_START_RATE_LIMIT_WINDOW_SECONDS:60}
+  rabbitmq:
+    enabled: ${XIAOC_RABBITMQ_ENABLED:true}
+    run-start-exchange: ${XIAOC_RUN_START_EXCHANGE:xiaoc.run}
+    run-start-queue: ${XIAOC_RUN_START_QUEUE:xiaoc.run.start}
+    run-start-routing-key: ${XIAOC_RUN_START_ROUTING_KEY:run.start}
 
 management:
   endpoints:

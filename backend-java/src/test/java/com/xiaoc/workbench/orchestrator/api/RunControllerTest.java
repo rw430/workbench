@@ -1,5 +1,7 @@
 package com.xiaoc.workbench.orchestrator.api;
 
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -7,6 +9,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.xiaoc.workbench.common.security.SecurityConfig;
 import com.xiaoc.workbench.common.web.ApiExceptionHandler;
+import com.xiaoc.workbench.common.web.InfrastructureUnavailableException;
+import com.xiaoc.workbench.common.web.RateLimitExceededException;
+import com.xiaoc.workbench.orchestrator.queue.RateLimitService;
 import com.xiaoc.workbench.orchestrator.queue.RunQueue;
 import com.xiaoc.workbench.project.api.HumanGateSummary;
 import com.xiaoc.workbench.project.api.ProjectStateResponse;
@@ -30,6 +35,9 @@ class RunControllerTest {
     @MockBean
     private RunQueue runQueue;
 
+    @MockBean
+    private RateLimitService rateLimitService;
+
     @Test
     void startsRunWithoutAuthenticationForLocalDemo() throws Exception {
         when(runQueue.enqueueStart("run-1")).thenReturn(phase3State("waiting_human", "waiting"));
@@ -38,6 +46,30 @@ class RunControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.run.status").value("waiting_human"))
                 .andExpect(jsonPath("$.human_gate.status").value("waiting"));
+
+        verify(rateLimitService).checkAllowed("local-user", "run-start");
+    }
+
+    @Test
+    void mapsRateLimitFailuresToTooManyRequests() throws Exception {
+        doThrow(new RateLimitExceededException("run start rate limit exceeded"))
+                .when(rateLimitService).checkAllowed("local-user", "run-start");
+
+        mockMvc.perform(post("/api/runs/run-1/start"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.error").value("rate_limited"))
+                .andExpect(jsonPath("$.message").value("run start rate limit exceeded"));
+    }
+
+    @Test
+    void mapsInfrastructureFailuresToServiceUnavailable() throws Exception {
+        doThrow(new InfrastructureUnavailableException("redis unavailable"))
+                .when(rateLimitService).checkAllowed("local-user", "run-start");
+
+        mockMvc.perform(post("/api/runs/run-1/start"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error").value("infrastructure_unavailable"))
+                .andExpect(jsonPath("$.message").value("redis unavailable"));
     }
 
     private static ProjectStateResponse phase3State(String runStatus, String gateStatus) {

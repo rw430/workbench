@@ -36,6 +36,27 @@ public class ApiExceptionHandler {
                 .body(Map.of("error", "invalid_state", "message", exception.getMessage()));
     }
 
+    @ExceptionHandler(RunAlreadyLockedException.class)
+    ResponseEntity<Map<String, String>> handleRunAlreadyLocked(RunAlreadyLockedException exception) {
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(Map.of("error", "run_locked", "message", exception.getMessage()));
+    }
+
+    @ExceptionHandler(RateLimitExceededException.class)
+    ResponseEntity<Map<String, String>> handleRateLimitExceeded(RateLimitExceededException exception) {
+        return ResponseEntity
+                .status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(Map.of("error", "rate_limited", "message", exception.getMessage()));
+    }
+
+    @ExceptionHandler(InfrastructureUnavailableException.class)
+    ResponseEntity<Map<String, String>> handleInfrastructureUnavailable(InfrastructureUnavailableException exception) {
+        return ResponseEntity
+                .status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of("error", "infrastructure_unavailable", "message", exception.getMessage()));
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<Map<String, String>> handleInvalidRequest(IllegalArgumentException exception) {
         return ResponseEntity
