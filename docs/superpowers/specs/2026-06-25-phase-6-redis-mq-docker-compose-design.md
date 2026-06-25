@@ -2,21 +2,23 @@
 
 ## Goal
 
-Phase 6 turns the Phase 5 single-machine demo into a more realistic local engineering setup without changing the main run execution contract yet.
+Phase 6 turns the Phase 5 single-machine demo into a more realistic local engineering setup by introducing Redis-backed protection, Docker Compose middleware, and a real RabbitMQ runner queue.
 
 The phase must:
 
 - Add Redis-backed infrastructure behavior that the current product can actually use.
 - Add Docker Compose for local PostgreSQL, Redis, and RabbitMQ middleware.
-- Keep the current `RunQueue` path local by default so the Phase 5 frontend flow still works.
-- Reserve the RabbitMQ interface and message contract so a later phase can add a real producer and worker without rewriting `RunController` or `RunnerService`.
+- Keep the current `LocalRunQueue` implementation available as a fallback and test-friendly mode.
+- Add a real RabbitMQ-backed queue mode with a producer and worker while preserving the `RunQueue` abstraction.
 - Produce a beginner-friendly learning document that explains Redis, MQ, Docker Compose, and the exact design trade-offs.
 
 ## Non-Goals
 
-Phase 6 must not implement a real RabbitMQ runner worker.
+Phase 6 must not remove `LocalRunQueue`.
 
-It must not change `POST /api/runs/{runId}/start` into an asynchronous "accepted only" API. The endpoint should continue to return `ProjectStateResponse` from the local queue path.
+It must not make RabbitMQ the only way to run the system. Developers must still be able to run the local queue path without RabbitMQ.
+
+It must not require the frontend to understand RabbitMQ directly. The frontend continues to call HTTP APIs and consume HTTP/SSE state.
 
 It must not require Redis or RabbitMQ for normal unit tests that do not exercise Redis-specific behavior. Tests should remain clear about which checks need Docker/Testcontainers.
 
@@ -33,7 +35,7 @@ RunController
 -> RunnerService
 ```
 
-`RunController` does not call `RunnerService` directly. This is the right seam for later RabbitMQ support.
+`RunController` does not call `RunnerService` directly. This is the right seam for Phase 6 RabbitMQ support.
 
 The current implementation has:
 
@@ -42,17 +44,38 @@ The current implementation has:
 - SSE event streaming and audit logging from Phase 4.
 - A Phase 5 frontend that expects a synchronous `ProjectStateResponse` after starting a run.
 
-Phase 6 should build on these boundaries instead of replacing them.
+Phase 6 should build on these boundaries instead of replacing them. The important change is that `RunQueue` now has two real modes:
+
+```text
+local  -> execute immediately inside the request path
+rabbit -> publish a message and let a background worker execute later
+```
 
 ## Recommended Architecture
 
-The Phase 6 runtime path stays local:
+The Phase 6 runtime path supports two modes.
+
+Local mode:
 
 ```text
 RunController
 -> RunStartRateLimiter
 -> RunQueue
 -> LocalRunQueue
+-> RunConcurrencyGuard
+-> RunnerService
+```
+
+Rabbit mode:
+
+```text
+RunController
+-> RunStartRateLimiter
+-> RunQueue
+-> RabbitRunQueue
+-> RabbitMQ exchange
+-> xiaoc.run.start queue
+-> RunWorker
 -> RunConcurrencyGuard
 -> RunnerService
 ```
@@ -65,12 +88,12 @@ Redis
   rate limit: xiaoc:rate-limit:{actorOrIp}:{action}:{window}
 ```
 
-RabbitMQ is introduced as a reserved contract:
+RabbitMQ is introduced as a real execution path:
 
 ```text
 RunQueue
-  LocalRunQueue       active in Phase 6
-  RabbitRunQueue      reserved for later phase
+  LocalRunQueue       fallback mode
+  RabbitRunQueue      RabbitMQ publishing mode
 
 RunStartMessage
   runId
@@ -79,25 +102,51 @@ RunStartMessage
   traceId
 ```
 
-The RabbitMQ exchange, queue, routing key, and DTO names should be documented and configured, but no listener should consume run messages in Phase 6.
+The RabbitMQ exchange, queue, routing key, DTO, publisher, and listener should be implemented and tested in Phase 6.
 
 ## Queue Design
 
 `RunQueue` remains the API-facing abstraction.
 
-`LocalRunQueue` remains the active implementation and must still return `ProjectStateResponse`.
+`LocalRunQueue` remains available and must still return `ProjectStateResponse`.
 
-RabbitMQ is reserved through:
+RabbitMQ is implemented through:
 
-- A queue mode property such as `xiaoc.queue.mode=local`.
+- A queue mode property such as `xiaoc.queue.mode=local` or `xiaoc.queue.mode=rabbit`.
 - RabbitMQ naming properties:
   - exchange: `xiaoc.run`
   - queue: `xiaoc.run.start`
   - routing key: `run.start`
 - A message DTO named `RunStartMessage`.
-- Documentation explaining how `RabbitRunQueue` and `RunWorker` will be added later.
+- `RabbitRunQueue`, which publishes `RunStartMessage`.
+- `RunWorker`, which consumes `RunStartMessage` and calls `RunnerService`.
 
-The important rule is that `RunnerService` should not know whether a run came from HTTP, local queue, or a future RabbitMQ worker.
+The important rule is that `RunnerService` should not know whether a run came from HTTP, local queue, or the RabbitMQ worker.
+
+### Start API Semantics
+
+Local mode can keep the existing synchronous behavior:
+
+```text
+POST /api/runs/{runId}/start
+-> LocalRunQueue
+-> RunnerService.startRun(runId)
+-> ProjectStateResponse after immediate local advancement
+```
+
+Rabbit mode is asynchronous:
+
+```text
+POST /api/runs/{runId}/start
+-> RabbitRunQueue publishes RunStartMessage
+-> API returns the current ProjectStateResponse after enqueue
+-> RunWorker later advances the run
+-> frontend sees progress through SSE and refreshes
+```
+
+The API should not block waiting for RabbitMQ consumption. The response should clearly represent "message accepted and current state returned", not "all work completed".
+
+The frontend should not need a structural redesign because Phase 5 already has SSE and can display current project state. Tests should be updated so the frontend does not assume that clicking start always synchronously advances every task in Rabbit mode.
 
 ## Redis Run Lock
 
@@ -119,15 +168,19 @@ If the key already exists, the caller should fail with a clear conflict error in
 
 The lock must have a TTL. A lock without a TTL can permanently block a run after a process crash.
 
-For Phase 6, the guard can be placed inside `LocalRunQueue` before `RunnerService.startRun(runId)`:
+For Phase 6, the guard should be used by both local and Rabbit worker execution paths:
 
 ```text
 LocalRunQueue.enqueueStart(runId)
 -> RunConcurrencyGuard.runWithLock(runId, callback)
 -> RunnerService.startRun(runId)
+
+RunWorker.handle(message)
+-> RunConcurrencyGuard.runWithLock(message.runId(), callback)
+-> RunnerService.startRun(message.runId())
 ```
 
-This location is intentionally close to the execution boundary. A future RabbitMQ worker can reuse the same guard before calling `RunnerService`.
+This location is intentionally close to the execution boundary. It protects against duplicate HTTP requests in local mode and duplicate delivery or parallel workers in Rabbit mode.
 
 ## Redis Rate Limiting
 
@@ -193,6 +246,12 @@ Management: 15672
 
 The backend and frontend should remain outside Compose in Phase 6. Keeping them local avoids expanding the phase into Docker image builds, Windows bind mount details, hot reload behavior, Maven cache handling, and frontend dev server routing.
 
+Rabbit mode should be runnable locally by starting middleware with Compose and then launching the backend with:
+
+```text
+XIAOC_QUEUE_MODE=rabbit
+```
+
 The runbook should explain:
 
 - How to start middleware with `docker compose up -d`.
@@ -230,6 +289,7 @@ xiaoc:
       max-requests: ${XIAOC_RUN_START_RATE_LIMIT_MAX_REQUESTS:20}
       window-seconds: ${XIAOC_RUN_START_RATE_LIMIT_WINDOW_SECONDS:60}
   rabbitmq:
+    enabled: ${XIAOC_RABBITMQ_ENABLED:true}
     run-start-exchange: ${XIAOC_RUN_START_EXCHANGE:xiaoc.run}
     run-start-queue: ${XIAOC_RUN_START_QUEUE:xiaoc.run.start}
     run-start-routing-key: ${XIAOC_RUN_START_ROUTING_KEY:run.start}
@@ -239,11 +299,15 @@ The exact Spring property class names can follow local style during implementati
 
 ## Error Handling
 
-Duplicate run start should return a clear conflict response.
+Duplicate run start should return a clear conflict response when the execution lock is already held.
 
 Rate limit overflow should return a clear too-many-requests response.
 
 Redis unavailable while enabled and fail-open is false should return a service-unavailable response or fail the application startup, depending on where the failure is detected.
+
+RabbitMQ unavailable in `rabbit` mode should fail fast when publishing cannot happen. A run start request must not pretend that the run has been queued when the broker did not accept the message.
+
+Rabbit worker failures should be visible through logs and should avoid infinite tight retry loops. Phase 6 can use RabbitMQ listener defaults plus clear error logging; advanced dead-letter queues can be documented as future work.
 
 The frontend does not need a Phase 6 redesign. It already renders API errors in the workbench. The backend error shape should reuse the project's existing error response patterns.
 
@@ -255,13 +319,17 @@ Unit tests:
 
 - `RunConcurrencyGuard` grants the first lock and rejects a second lock.
 - `RateLimitService` allows requests within a window and rejects requests over the limit.
-- Queue mode configuration keeps `LocalRunQueue` as the default active implementation.
+- Queue mode configuration keeps `LocalRunQueue` available and chooses the correct `RunQueue` implementation.
+- `RabbitRunQueue` publishes the expected `RunStartMessage`.
+- `RunWorker` delegates consumed messages to `RunnerService` through `RunConcurrencyGuard`.
 
 Integration tests:
 
 - Redis-backed lock behavior against a real Redis Testcontainer.
 - Redis-backed rate limit behavior against a real Redis Testcontainer.
 - Existing runner tests still pass with local queue behavior.
+- RabbitMQ publisher and worker behavior against a real RabbitMQ Testcontainer.
+- Rabbit mode start API enqueues and returns current state without blocking for completion.
 
 Static infrastructure checks:
 
@@ -291,8 +359,10 @@ The document must be beginner-friendly and explain:
 - What Docker and Docker Compose are.
 - Why a backend needs PostgreSQL, Redis, and RabbitMQ as separate services.
 - What Redis is good at and why it is suitable for short locks and rate limits.
-- What RabbitMQ is good at and why it is reserved but not activated in Phase 6.
+- What RabbitMQ is good at and how Phase 6 uses producer, exchange, queue, routing key, and worker.
 - How the queue abstraction protects the controller from future implementation changes.
+- Why `LocalRunQueue` still exists after adding RabbitMQ.
+- Why Rabbit mode changes timing semantics even though the frontend still calls the same HTTP API.
 - How to start and inspect local middleware.
 - How to explain this phase in an interview.
 
@@ -304,8 +374,8 @@ Phase 6 is complete only when:
 
 1. A Docker Compose file starts PostgreSQL, Redis, and RabbitMQ middleware.
 2. Backend configuration contains Redis and RabbitMQ connection properties.
-3. Local queue remains the default run execution path.
-4. RabbitMQ message contract and configuration names are present, but no real RabbitMQ worker replaces local execution.
+3. Local queue remains available as a supported run execution path.
+4. RabbitMQ mode implements a real producer and worker while preserving the `RunQueue` abstraction.
 5. Redis run locking is implemented and tested.
 6. Redis run start rate limiting is implemented and tested.
 7. A Docker Compose runbook exists.
@@ -314,15 +384,14 @@ Phase 6 is complete only when:
 
 ## Future Phase
 
-A later phase can add true RabbitMQ execution by implementing:
+A later phase can harden RabbitMQ execution with:
 
 ```text
-RabbitRunQueue
--> RabbitMQ exchange
--> xiaoc.run.start queue
--> RunWorker
--> RunConcurrencyGuard
--> RunnerService
+dead-letter exchange
+retry queue
+worker concurrency tuning
+message idempotency table
+operations dashboard
 ```
 
-That later phase can then change `RunQueue.enqueueStart` to return an accepted state or split the command API from the state query API. Phase 6 deliberately avoids that semantic change.
+That later phase can also split the command API from the state query API if Rabbit mode becomes the only production mode. Phase 6 keeps both local and Rabbit modes so learning and testing remain manageable.
