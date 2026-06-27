@@ -1,0 +1,55 @@
+name: xiaoc-workbench
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: xiaoc-postgres
+    environment:
+      POSTGRES_DB: xiaoc_workbench
+      POSTGRES_USER: xiaoc
+      POSTGRES_PASSWORD: xiaoc
+    ports:
+      - "5432:5432"
+    volumes:
+      - xiaoc-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xiaoc -d xiaoc_workbench"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: xiaoc-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - xiaoc-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: xiaoc-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: xiaoc
+      RABBITMQ_DEFAULT_PASS: xiaoc
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - xiaoc-rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  xiaoc-postgres-data:
+  xiaoc-redis-data:
+  xiaoc-rabbitmq-data:

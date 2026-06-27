@@ -1,12 +1,30 @@
 # Infrastructure
 
-This directory will contain Docker Compose and middleware configuration for local full-product demos.
+This directory contains local middleware configuration for the Xiaoc workbench.
 
-Planned services:
+## Services
 
-- PostgreSQL
-- Redis
-- RabbitMQ
-- backend-java
-- frontend
+- PostgreSQL on `localhost:5432`
+- Redis on `localhost:6379`
+- RabbitMQ AMQP on `localhost:5672`
+- RabbitMQ Management UI on `http://localhost:15672`
+
+## Start
+
+```powershell
+docker compose -f infra/docker-compose.yml up -d
+```
+
+## Validate
+
+```powershell
+docker compose -f infra/docker-compose.yml config
+docker compose -f infra/docker-compose.yml ps
+```
+
+## Stop
+
+```powershell
+docker compose -f infra/docker-compose.yml down
+```
 
