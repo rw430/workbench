@@ -45,6 +45,11 @@ export async function createProject(goal: string): Promise<ProjectState> {
   return parseJsonResponse<ProjectState>(response, "Create project");
 }
 
+export async function getProject(projectId: string): Promise<ProjectState> {
+  const response = await fetch(`${API_BASE}/api/projects/${projectId}`);
+  return parseJsonResponse<ProjectState>(response, "Get project");
+}
+
 export async function startRun(runId: string): Promise<ProjectState> {
   const response = await fetch(`${API_BASE}/api/runs/${runId}/start`, {
     method: "POST",

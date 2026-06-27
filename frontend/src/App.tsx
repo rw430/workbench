@@ -5,6 +5,7 @@ import {
   createProject,
   decideHumanGate,
   eventStreamUrl,
+  getProject,
   listAuditLogs,
   recommendAgents,
   startRun,
@@ -42,6 +43,16 @@ const runtimeEventTypes = [
   "run.completed",
   "run.failed",
 ];
+
+const stateChangingEventTypes = new Set([
+  "run.started",
+  "task.completed",
+  "human_gate.waiting",
+  "human_gate.approved",
+  "human_gate.rejected",
+  "run.completed",
+  "run.failed",
+]);
 
 type BusyAction = "analyze" | "create" | "start" | "approve" | "reject" | "audit";
 
@@ -98,6 +109,17 @@ export default function App() {
           },
         ].slice(-30);
       });
+
+      if (
+        projectState?.project.id &&
+        stateChangingEventTypes.has(envelope.event_type)
+      ) {
+        void getProject(projectState.project.id)
+          .then(setProjectState)
+          .catch((err) => {
+            setError(err instanceof Error ? err.message : "Refresh failed");
+          });
+      }
     }
 
     for (const eventType of runtimeEventTypes) {
@@ -114,7 +136,7 @@ export default function App() {
       }
       source.close();
     };
-  }, [projectState?.run.id]);
+  }, [projectState?.run.id, projectState?.project.id]);
 
   async function runAction(action: BusyAction, callback: () => Promise<void>) {
     setBusyAction(action);

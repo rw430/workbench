@@ -268,4 +268,48 @@ describe("Phase 5 workbench", () => {
       );
     });
   });
+
+  it("refreshes project state when asynchronous run events arrive", async () => {
+    installFakeEventSource();
+    vi.spyOn(api, "analyzeIntent").mockResolvedValue(intent);
+    vi.spyOn(api, "recommendAgents").mockResolvedValue(agents);
+    vi.spyOn(api, "createProject").mockResolvedValue({
+      ...waitingProjectState,
+      project: { ...waitingProjectState.project, status: "created" },
+      run: { ...waitingProjectState.run, status: "created" },
+      human_gate: null,
+      tasks: waitingProjectState.tasks.map((task) => ({ ...task, status: "pending" })),
+    });
+    vi.spyOn(api, "startRun").mockResolvedValue({
+      ...waitingProjectState,
+      project: { ...waitingProjectState.project, status: "created" },
+      run: { ...waitingProjectState.run, status: "created" },
+      human_gate: null,
+      tasks: waitingProjectState.tasks.map((task) => ({ ...task, status: "pending" })),
+    });
+    vi.spyOn(api, "getProject").mockResolvedValue(waitingProjectState);
+    vi.spyOn(api, "listAuditLogs").mockResolvedValue([]);
+
+    render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: /Analyze/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /Create Project/i }));
+    await userEvent.click(screen.getByRole("button", { name: /Start Run/i }));
+
+    const currentSource =
+      FakeEventSource.instances[FakeEventSource.instances.length - 1];
+
+    currentSource.emit(
+      "human_gate.waiting",
+      JSON.stringify({
+        id: "event-rabbit-1",
+        run_id: "run-1",
+        event_type: "human_gate.waiting",
+        payload: { gate_id: "gate-1" },
+        created_at: "2026-06-25T00:00:00Z",
+      }),
+    );
+
+    await waitFor(() => expect(api.getProject).toHaveBeenCalledWith("project-1"));
+    expect(await screen.findByText("Confirm PRD scope before risk review.")).toBeInTheDocument();
+  });
 });
